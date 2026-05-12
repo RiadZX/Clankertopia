@@ -20,10 +20,10 @@ pub struct ProcTextures {
 impl ProcTextures {
     pub fn generate(images: &mut Assets<Image>) -> Self {
         Self {
-            wood_floor: images.add(make_wood_planks(512, 512, (90, 60, 38), (60, 38, 22))),
+            wood_floor: images.add(make_wood_planks(512, 512, (140, 95, 55), (105, 70, 38))),
             carpet: images.add(make_noise(256, 256, (60, 45, 70), 18)),
-            plaster: images.add(make_noise(256, 256, (200, 195, 185), 8)),
-            ceiling_tile: images.add(make_tiles(256, 256, (210, 210, 210), (170, 170, 170), 64)),
+            plaster: images.add(make_noise(256, 256, (235, 225, 205), 6)),
+            ceiling_tile: images.add(make_tiles(256, 256, (245, 245, 245), (210, 210, 210), 64)),
             desk_wood: images.add(make_wood_planks(256, 256, (130, 85, 55), (95, 60, 35))),
             poster_grid: images.add(make_poster(256, 256)),
             rug_pattern: images.add(make_rug(256, 256)),

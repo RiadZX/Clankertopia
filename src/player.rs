@@ -50,6 +50,11 @@ fn spawn_player(mut commands: Commands, cfg: Res<OfficeConfigRes>) {
             pitch: 0.0,
         },
         Camera3d::default(),
+        AmbientLight {
+            color: Color::srgb(0.85, 0.9, 1.0),
+            brightness: 800.0,
+            affects_lightmapped_meshes: false,
+        },
         Transform::from_translation(pos).looking_at(pos + forward, Vec3::Y),
     ));
 }

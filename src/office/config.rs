@@ -40,9 +40,9 @@ pub struct RoomTheme {
 impl Default for RoomTheme {
     fn default() -> Self {
         Self {
-            wall_color: [0.18, 0.18, 0.22],
-            floor_color: [0.10, 0.10, 0.12],
-            ceiling_color: [0.14, 0.14, 0.18],
+            wall_color: [0.92, 0.88, 0.80],
+            floor_color: [0.55, 0.40, 0.28],
+            ceiling_color: [0.95, 0.95, 0.95],
         }
     }
 }

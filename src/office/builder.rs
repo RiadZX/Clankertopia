@@ -63,14 +63,16 @@ pub fn build_office(
         }
     }
 
+    // Bright daylight from above.
     commands.spawn((
         BuiltByOffice,
         DirectionalLight {
-            illuminance: 3500.0,
+            illuminance: 14_000.0,
+            color: Color::srgb(1.0, 0.97, 0.92),
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_xyz(2.0, 8.0, 2.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(4.0, 10.0, 3.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 
     WalkVolumes(walks)
@@ -90,31 +92,19 @@ fn build_room(
     let [w, h, d] = room.size;
 
     let wall_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(
-            room.theme.wall_color[0],
-            room.theme.wall_color[1],
-            room.theme.wall_color[2],
-        ),
+        base_color: Color::WHITE,
         base_color_texture: Some(tex.plaster.clone()),
         perceptual_roughness: 0.9,
         ..default()
     });
     let floor_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(
-            room.theme.floor_color[0] * 1.8,
-            room.theme.floor_color[1] * 1.8,
-            room.theme.floor_color[2] * 1.8,
-        ),
+        base_color: Color::WHITE,
         base_color_texture: Some(tex.wood_floor.clone()),
         perceptual_roughness: 0.85,
         ..default()
     });
     let ceiling_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(
-            room.theme.ceiling_color[0],
-            room.theme.ceiling_color[1],
-            room.theme.ceiling_color[2],
-        ),
+        base_color: Color::WHITE,
         base_color_texture: Some(tex.ceiling_tile.clone()),
         perceptual_roughness: 0.95,
         ..default()
@@ -157,6 +147,7 @@ fn build_room(
     build_walls_with_doors(
         commands,
         meshes,
+        materials,
         &wall_mat,
         room_entity,
         w,
@@ -170,9 +161,10 @@ fn build_room(
         .spawn((
             BuiltByOffice,
             PointLight {
-                intensity: 220_000.0,
+                intensity: 600_000.0,
+                color: Color::srgb(1.0, 0.95, 0.85),
                 radius: 0.5,
-                range: w.max(d) * 1.5,
+                range: w.max(d) * 2.0,
                 shadows_enabled: false,
                 ..default()
             },
@@ -269,6 +261,7 @@ fn build_room(
 fn build_walls_with_doors(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
     wall_mat: &Handle<StandardMaterial>,
     parent: Entity,
     w: f32,
@@ -310,19 +303,20 @@ fn build_walls_with_doors(
             segs
         };
 
+        let wall_thickness = 0.12_f32;
+        let face = Quat::from_axis_angle(Vec3::Y, yaw);
+
         for (a, b) in segments {
             let seg_len = (b - a).max(0.0);
             if seg_len <= 0.001 {
                 continue;
             }
             let centre = (a + b) * 0.5;
-            let mesh = meshes.add(Plane3d::default().mesh().size(seg_len, h));
+            let mesh = meshes.add(Cuboid::new(seg_len, h, wall_thickness));
             let (x, z) = match wall {
                 Wall::North | Wall::South => (centre, fixed),
                 Wall::East | Wall::West => (fixed, centre),
             };
-            let tilt = Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
-            let face = Quat::from_axis_angle(Vec3::Y, yaw);
             let segment = commands
                 .spawn((
                     BuiltByOffice,
@@ -330,7 +324,7 @@ fn build_walls_with_doors(
                     MeshMaterial3d(wall_mat.clone()),
                     Transform {
                         translation: Vec3::new(x, h * 0.5, z),
-                        rotation: face * tilt,
+                        rotation: face,
                         scale: Vec3::ONE,
                     },
                 ))
@@ -339,19 +333,17 @@ fn build_walls_with_doors(
         }
 
         // Lintels above doors.
-        for (offset, width, dh) in openings {
-            let centre = offset;
-            let lintel_h = (h - dh).max(0.0);
+        for (offset, width, dh) in &openings {
+            let centre = *offset;
+            let lintel_h = (h - *dh).max(0.0);
             if lintel_h <= 0.001 {
                 continue;
             }
-            let mesh = meshes.add(Plane3d::default().mesh().size(width, lintel_h));
+            let mesh = meshes.add(Cuboid::new(*width, lintel_h, wall_thickness));
             let (x, z) = match wall {
                 Wall::North | Wall::South => (centre, fixed),
                 Wall::East | Wall::West => (fixed, centre),
             };
-            let tilt = Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
-            let face = Quat::from_axis_angle(Vec3::Y, yaw);
             let lintel = commands
                 .spawn((
                     BuiltByOffice,
@@ -359,14 +351,153 @@ fn build_walls_with_doors(
                     MeshMaterial3d(wall_mat.clone()),
                     Transform {
                         translation: Vec3::new(x, dh + lintel_h * 0.5, z),
-                        rotation: face * tilt,
+                        rotation: face,
                         scale: Vec3::ONE,
                     },
                 ))
                 .id();
             commands.entity(parent).add_child(lintel);
         }
+
+        // Door frames + door leaf for each opening.
+        for (offset, width, dh) in &openings {
+            spawn_door(
+                commands,
+                meshes,
+                materials,
+                parent,
+                wall,
+                *offset,
+                *width,
+                *dh,
+                fixed,
+                face,
+            );
+        }
     }
+}
+
+fn spawn_door(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    parent: Entity,
+    wall: Wall,
+    offset: f32,
+    width: f32,
+    height: f32,
+    fixed: f32,
+    face: Quat,
+) {
+    let frame_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.32, 0.22, 0.15),
+        perceptual_roughness: 0.65,
+        ..default()
+    });
+    let door_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.42, 0.28, 0.18),
+        perceptual_roughness: 0.55,
+        ..default()
+    });
+    let handle_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.85, 0.7, 0.25),
+        metallic: 0.85,
+        perceptual_roughness: 0.25,
+        ..default()
+    });
+
+    let frame_t = 0.08_f32;
+    let frame_d = 0.18_f32;
+
+    // Side jambs (left and right of door opening).
+    for sx in [-1.0_f32, 1.0] {
+        let jamb_mesh = meshes.add(Cuboid::new(frame_t, height, frame_d));
+        let (x, z) = match wall {
+            Wall::North | Wall::South => (offset + sx * (width * 0.5 + frame_t * 0.5), fixed),
+            Wall::East | Wall::West => (fixed, offset + sx * (width * 0.5 + frame_t * 0.5)),
+        };
+        let jamb = commands
+            .spawn((
+                BuiltByOffice,
+                Mesh3d(jamb_mesh),
+                MeshMaterial3d(frame_mat.clone()),
+                Transform {
+                    translation: Vec3::new(x, height * 0.5, z),
+                    rotation: face,
+                    scale: Vec3::ONE,
+                },
+            ))
+            .id();
+        commands.entity(parent).add_child(jamb);
+    }
+    // Top header of the frame just below the lintel.
+    let header_mesh = meshes.add(Cuboid::new(width + frame_t * 2.0, frame_t, frame_d));
+    let (hx, hz) = match wall {
+        Wall::North | Wall::South => (offset, fixed),
+        Wall::East | Wall::West => (fixed, offset),
+    };
+    let header = commands
+        .spawn((
+            BuiltByOffice,
+            Mesh3d(header_mesh),
+            MeshMaterial3d(frame_mat.clone()),
+            Transform {
+                translation: Vec3::new(hx, height - frame_t * 0.5, hz),
+                rotation: face,
+                scale: Vec3::ONE,
+            },
+        ))
+        .id();
+    commands.entity(parent).add_child(header);
+
+    // Open door leaf, swung 90 degrees into the new room (the door axis is
+    // perpendicular to the wall). We hinge it on one jamb.
+    let leaf_w = width - 0.02;
+    let leaf_h = height - 0.04;
+    let leaf_t = 0.04_f32;
+    let leaf_mesh = meshes.add(Cuboid::new(leaf_w, leaf_h, leaf_t));
+    // Position the leaf centre offset along the door's normal by half leaf_w,
+    // so it stands open along the wall's local Z axis.
+    let leaf_local_offset = match wall {
+        Wall::North => Vec3::new(-width * 0.5, 0.0, -leaf_w * 0.5),
+        Wall::South => Vec3::new(width * 0.5, 0.0, leaf_w * 0.5),
+        Wall::East => Vec3::new(0.0, 0.0, -width * 0.5 + leaf_w * 0.5),
+        Wall::West => Vec3::new(0.0, 0.0, width * 0.5 - leaf_w * 0.5),
+    };
+    let _ = leaf_local_offset;
+    // Simpler: place leaf flat in the doorway plane, just slightly tilted so
+    // it looks "ajar".
+    let ajar = Quat::from_axis_angle(Vec3::Y, std::f32::consts::FRAC_PI_4);
+    let (lx, lz) = match wall {
+        Wall::North | Wall::South => (offset, fixed),
+        Wall::East | Wall::West => (fixed, offset),
+    };
+    let leaf = commands
+        .spawn((
+            BuiltByOffice,
+            Mesh3d(leaf_mesh),
+            MeshMaterial3d(door_mat),
+            Transform {
+                translation: Vec3::new(lx, leaf_h * 0.5, lz),
+                rotation: face * ajar,
+                scale: Vec3::ONE,
+            },
+        ))
+        .id();
+    commands.entity(parent).add_child(leaf);
+
+    // Door handle.
+    let handle_mesh = meshes.add(Sphere::new(0.04));
+    let handle_local = face * ajar * Vec3::new(leaf_w * 0.4, 0.0, leaf_t * 0.5 + 0.04);
+    let handle = commands
+        .spawn((
+            BuiltByOffice,
+            Mesh3d(handle_mesh),
+            MeshMaterial3d(handle_mat),
+            Transform::from_translation(Vec3::new(lx, leaf_h * 0.5, lz) + handle_local),
+        ))
+        .id();
+    commands.entity(parent).add_child(handle);
 }
 
 fn door_slab(cfg: &OfficeConfig, room: &RoomConfig, door: &DoorConfig) -> Option<WalkBox> {
