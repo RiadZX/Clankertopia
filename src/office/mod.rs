@@ -6,6 +6,7 @@ pub mod character;
 pub mod config;
 pub mod decor;
 pub mod editor;
+pub mod focus_visibility;
 pub mod loader;
 pub mod textures;
 
@@ -45,7 +46,8 @@ impl Plugin for OfficePlugin {
                     editor::debounced_save,
                 )
                     .chain(),
-            );
+            )
+            .add_systems(Update, focus_visibility::hide_focused_desk_occluders);
     }
 }
 

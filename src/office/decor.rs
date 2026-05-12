@@ -1,169 +1,394 @@
 use bevy::prelude::*;
 
+use super::builder::DeskOccluder;
 use super::editor::BuiltByOffice;
 use super::textures::ProcTextures;
 
-pub fn spawn_desk_decor(
+/// Spawns the items sitting on top of a desk. All entities are tagged with
+/// `BuiltByOffice` for rebuilds and `DeskOccluder` for focus-time hiding.
+///
+/// `desk_floor` is the desk's anchor at floor level; `desk_top_y` is the
+/// height of the desk surface in world units (where accessories sit).
+pub fn spawn_desk_accessories(
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     tex: &ProcTextures,
-    desk_world_pos: Vec3,
+    desk_floor: Vec3,
     yaw: f32,
+    desk_top_y: f32,
+    occluder: DeskOccluder,
 ) {
     let yaw_q = Quat::from_axis_angle(Vec3::Y, yaw);
+    let top_pos = |local: Vec3| desk_floor + yaw_q * Vec3::new(local.x, 0.0, local.z) + Vec3::Y * (desk_top_y + local.y);
 
-    // Chair: a low cuboid seat + thin backrest, behind the desk.
-    let seat_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.18, 0.18, 0.22),
-        perceptual_roughness: 0.7,
-        ..default()
-    });
-    let seat_mesh = meshes.add(Cuboid::new(0.5, 0.08, 0.5));
-    let seat_offset = yaw_q * Vec3::new(0.0, -0.55, 1.05);
-    commands.spawn((
-        BuiltByOffice,
-        Mesh3d(seat_mesh),
-        MeshMaterial3d(seat_mat.clone()),
-        Transform {
-            translation: desk_world_pos + seat_offset,
-            rotation: yaw_q,
-            scale: Vec3::ONE,
-        },
-    ));
-    let back_mesh = meshes.add(Cuboid::new(0.5, 0.55, 0.05));
-    let back_offset = yaw_q * Vec3::new(0.0, -0.3, 1.3);
-    commands.spawn((
-        BuiltByOffice,
-        Mesh3d(back_mesh),
-        MeshMaterial3d(seat_mat),
-        Transform {
-            translation: desk_world_pos + back_offset,
-            rotation: yaw_q,
-            scale: Vec3::ONE,
-        },
-    ));
-
-    // Desk lamp: a stand + a tiny emissive bulb head.
-    let lamp_stand_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.35, 0.35, 0.4),
+    // --- Desk lamp (left-back of desk) ---
+    let metal_dark_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.20, 0.20, 0.24),
         base_color_texture: Some(tex.metal.clone()),
         metallic: 0.6,
-        perceptual_roughness: 0.3,
+        perceptual_roughness: 0.35,
         ..default()
     });
-    let stand_mesh = meshes.add(Cylinder::new(0.02, 0.35));
-    let stand_offset = yaw_q * Vec3::new(0.55, -0.55, 0.05);
+    // Base plate.
+    let base_mesh = meshes.add(Cylinder::new(0.07, 0.015));
     commands.spawn((
         BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(base_mesh),
+        MeshMaterial3d(metal_dark_mat.clone()),
+        Transform::from_translation(top_pos(Vec3::new(-0.55, 0.01, 0.18))),
+    ));
+    // Vertical stand.
+    let stand_mesh = meshes.add(Cylinder::new(0.012, 0.36));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
         Mesh3d(stand_mesh),
-        MeshMaterial3d(lamp_stand_mat.clone()),
+        MeshMaterial3d(metal_dark_mat.clone()),
         Transform {
-            translation: desk_world_pos + stand_offset + Vec3::Y * 0.175,
+            translation: top_pos(Vec3::new(-0.55, 0.18, 0.18)),
             rotation: yaw_q,
             scale: Vec3::ONE,
         },
     ));
-    let bulb_mesh = meshes.add(Sphere::new(0.07));
-    let bulb_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(1.0, 0.95, 0.7),
-        emissive: LinearRgba::new(2.5, 2.0, 1.0, 1.0),
-        unlit: false,
+    // Arm.
+    let arm_mesh = meshes.add(Cuboid::new(0.012, 0.012, 0.22));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(arm_mesh),
+        MeshMaterial3d(metal_dark_mat.clone()),
+        Transform {
+            translation: top_pos(Vec3::new(-0.55, 0.36, 0.07)),
+            rotation: yaw_q * Quat::from_rotation_x(0.4),
+            scale: Vec3::ONE,
+        },
+    ));
+    // Shade (cone-ish: small cylinder, emissive yellow underside).
+    let shade_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.85, 0.78, 0.5),
+        emissive: LinearRgba::new(1.6, 1.3, 0.7, 1.0),
         ..default()
     });
-    let bulb_offset = stand_offset + Vec3::Y * 0.35;
+    let shade_mesh = meshes.add(Cylinder::new(0.07, 0.08));
     commands.spawn((
         BuiltByOffice,
-        Mesh3d(bulb_mesh),
-        MeshMaterial3d(bulb_mat),
-        Transform::from_translation(desk_world_pos + bulb_offset),
+        occluder.clone(),
+        Mesh3d(shade_mesh),
+        MeshMaterial3d(shade_mat),
+        Transform {
+            translation: top_pos(Vec3::new(-0.55, 0.33, -0.05)),
+            rotation: yaw_q * Quat::from_rotation_x(0.6),
+            scale: Vec3::ONE,
+        },
     ));
-    // Warm point light from the bulb.
+    // Warm point light.
     commands.spawn((
         BuiltByOffice,
+        occluder.clone(),
         PointLight {
-            intensity: 18_000.0,
+            intensity: 22_000.0,
             color: Color::srgb(1.0, 0.85, 0.6),
-            radius: 0.08,
-            range: 4.0,
+            radius: 0.05,
+            range: 3.0,
             shadows_enabled: false,
             ..default()
         },
-        Transform::from_translation(desk_world_pos + bulb_offset),
+        Transform::from_translation(top_pos(Vec3::new(-0.45, 0.30, -0.05))),
     ));
 
-    // Potted plant: brown pot + green sphere foliage.
+    // --- Potted plant (right-back of desk) ---
     let pot_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.45, 0.28, 0.18),
+        base_color: Color::srgb(0.50, 0.30, 0.18),
         perceptual_roughness: 0.85,
         ..default()
     });
-    let pot_mesh = meshes.add(Cylinder::new(0.08, 0.12));
-    let pot_offset = yaw_q * Vec3::new(-0.55, -0.55, 0.0);
+    let pot_mesh = meshes.add(Cylinder::new(0.08, 0.13));
     commands.spawn((
         BuiltByOffice,
+        occluder.clone(),
         Mesh3d(pot_mesh),
         MeshMaterial3d(pot_mat),
-        Transform::from_translation(desk_world_pos + pot_offset + Vec3::Y * 0.06),
+        Transform::from_translation(top_pos(Vec3::new(0.6, 0.065, 0.20))),
     ));
     let foliage_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.25, 0.55, 0.25),
         perceptual_roughness: 0.85,
         ..default()
     });
-    let foliage_mesh = meshes.add(Sphere::new(0.13));
-    commands.spawn((
-        BuiltByOffice,
-        Mesh3d(foliage_mesh),
-        MeshMaterial3d(foliage_mat),
-        Transform::from_translation(desk_world_pos + pot_offset + Vec3::Y * 0.22),
-    ));
+    for (off, r) in [
+        (Vec3::new(0.0, 0.20, 0.0), 0.12),
+        (Vec3::new(0.05, 0.16, 0.02), 0.08),
+        (Vec3::new(-0.04, 0.18, -0.03), 0.08),
+    ] {
+        let mesh = meshes.add(Sphere::new(r));
+        commands.spawn((
+            BuiltByOffice,
+            occluder.clone(),
+            Mesh3d(mesh),
+            MeshMaterial3d(foliage_mat.clone()),
+            Transform::from_translation(top_pos(Vec3::new(0.6, 0.0, 0.20) + off)),
+        ));
+    }
 
-    // Coffee mug.
+    // --- Coffee mug (right of monitor) ---
     let mug_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.9, 0.9, 0.95),
+        base_color: Color::srgb(0.92, 0.92, 0.95),
         perceptual_roughness: 0.4,
         ..default()
     });
-    let mug_mesh = meshes.add(Cylinder::new(0.045, 0.09));
-    let mug_offset = yaw_q * Vec3::new(0.35, -0.55, -0.1);
+    let mug_mesh = meshes.add(Cylinder::new(0.045, 0.10));
     commands.spawn((
         BuiltByOffice,
+        occluder.clone(),
         Mesh3d(mug_mesh),
         MeshMaterial3d(mug_mat),
-        Transform::from_translation(desk_world_pos + mug_offset + Vec3::Y * 0.045),
+        Transform::from_translation(top_pos(Vec3::new(0.45, 0.05, -0.18))),
     ));
     let coffee_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(0.22, 0.12, 0.05),
         perceptual_roughness: 0.6,
         ..default()
     });
-    let coffee_mesh = meshes.add(Cylinder::new(0.04, 0.005));
+    let coffee_mesh = meshes.add(Cylinder::new(0.040, 0.005));
     commands.spawn((
         BuiltByOffice,
+        occluder.clone(),
         Mesh3d(coffee_mesh),
         MeshMaterial3d(coffee_mat),
-        Transform::from_translation(desk_world_pos + mug_offset + Vec3::Y * 0.088),
+        Transform::from_translation(top_pos(Vec3::new(0.45, 0.095, -0.18))),
+    ));
+    // Mug handle.
+    let handle_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.92, 0.92, 0.95),
+        perceptual_roughness: 0.4,
+        ..default()
+    });
+    let handle_mesh = meshes.add(Torus::new(0.02, 0.035));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(handle_mesh),
+        MeshMaterial3d(handle_mat),
+        Transform {
+            translation: top_pos(Vec3::new(0.50, 0.05, -0.18)),
+            rotation: yaw_q * Quat::from_rotation_z(std::f32::consts::FRAC_PI_2),
+            scale: Vec3::ONE,
+        },
     ));
 
-    // Keyboard slab in front of the monitor.
+    // --- Keyboard ---
     let kb_mat = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.08, 0.08, 0.1),
+        base_color: Color::srgb(0.10, 0.10, 0.12),
         perceptual_roughness: 0.6,
         ..default()
     });
-    let kb_mesh = meshes.add(Cuboid::new(0.5, 0.025, 0.16));
-    let kb_offset = yaw_q * Vec3::new(0.0, -0.5, -0.15);
+    let kb_mesh = meshes.add(Cuboid::new(0.55, 0.02, 0.16));
     commands.spawn((
         BuiltByOffice,
+        occluder.clone(),
         Mesh3d(kb_mesh),
-        MeshMaterial3d(kb_mat),
+        MeshMaterial3d(kb_mat.clone()),
         Transform {
-            translation: desk_world_pos + kb_offset,
+            translation: top_pos(Vec3::new(0.0, 0.015, -0.20)),
             rotation: yaw_q,
             scale: Vec3::ONE,
         },
     ));
+    // Tiny key bumps (a 12x4 strip of small cuboids).
+    for kx in 0..14 {
+        for kz in 0..4 {
+            let key_mesh = meshes.add(Cuboid::new(0.030, 0.008, 0.030));
+            let lx = -0.25 + (kx as f32) * 0.037;
+            let lz = -0.20 + 0.055 - (kz as f32) * 0.037;
+            commands.spawn((
+                BuiltByOffice,
+                occluder.clone(),
+                Mesh3d(key_mesh),
+                MeshMaterial3d(kb_mat.clone()),
+                Transform {
+                    translation: top_pos(Vec3::new(lx, 0.025, lz)),
+                    rotation: yaw_q,
+                    scale: Vec3::ONE,
+                },
+            ));
+        }
+    }
+
+    // --- Mouse + mouse pad ---
+    let pad_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.15, 0.18, 0.25),
+        perceptual_roughness: 0.9,
+        ..default()
+    });
+    let pad_mesh = meshes.add(Cuboid::new(0.22, 0.005, 0.18));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(pad_mesh),
+        MeshMaterial3d(pad_mat),
+        Transform {
+            translation: top_pos(Vec3::new(0.40, 0.0035, -0.20)),
+            rotation: yaw_q,
+            scale: Vec3::ONE,
+        },
+    ));
+    let mouse_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.12, 0.12, 0.15),
+        perceptual_roughness: 0.55,
+        ..default()
+    });
+    let mouse_mesh = meshes.add(Capsule3d::new(0.035, 0.04));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(mouse_mesh),
+        MeshMaterial3d(mouse_mat),
+        Transform {
+            translation: top_pos(Vec3::new(0.40, 0.03, -0.20)),
+            rotation: yaw_q * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2),
+            scale: Vec3::ONE,
+        },
+    ));
+
+    // --- Stack of books on the left edge of the desk ---
+    let book_colors = [
+        Color::srgb(0.65, 0.18, 0.18),
+        Color::srgb(0.20, 0.35, 0.60),
+        Color::srgb(0.85, 0.65, 0.20),
+    ];
+    for (i, c) in book_colors.iter().enumerate() {
+        let mat = materials.add(StandardMaterial {
+            base_color: *c,
+            perceptual_roughness: 0.6,
+            ..default()
+        });
+        let mesh = meshes.add(Cuboid::new(0.16, 0.035, 0.22));
+        commands.spawn((
+            BuiltByOffice,
+            occluder.clone(),
+            Mesh3d(mesh),
+            MeshMaterial3d(mat),
+            Transform {
+                translation: top_pos(Vec3::new(
+                    -0.55,
+                    0.0175 + (i as f32) * 0.038,
+                    -0.18,
+                )),
+                rotation: yaw_q * Quat::from_axis_angle(Vec3::Y, 0.08 * i as f32),
+                scale: Vec3::ONE,
+            },
+        ));
+    }
+
+    // --- Picture frame standing on the desk ---
+    let frame_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.45, 0.30, 0.20),
+        perceptual_roughness: 0.7,
+        ..default()
+    });
+    let frame_mesh = meshes.add(Cuboid::new(0.18, 0.13, 0.012));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(frame_mesh),
+        MeshMaterial3d(frame_mat),
+        Transform {
+            translation: top_pos(Vec3::new(-0.30, 0.10, 0.18)),
+            rotation: yaw_q * Quat::from_rotation_x(0.18),
+            scale: Vec3::ONE,
+        },
+    ));
+    let photo_mat = materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(tex.poster_grid.clone()),
+        ..default()
+    });
+    let photo_mesh = meshes.add(Cuboid::new(0.15, 0.11, 0.001));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(photo_mesh),
+        MeshMaterial3d(photo_mat),
+        Transform {
+            translation: top_pos(Vec3::new(-0.30, 0.10, 0.175)),
+            rotation: yaw_q * Quat::from_rotation_x(0.18),
+            scale: Vec3::ONE,
+        },
+    ));
+
+    // --- Sticky notes (3 small colored squares) attached to the monitor base ---
+    let note_colors = [
+        Color::srgb(1.0, 0.95, 0.55),
+        Color::srgb(0.6, 0.95, 0.6),
+        Color::srgb(0.95, 0.65, 0.85),
+    ];
+    for (i, c) in note_colors.iter().enumerate() {
+        let mat = materials.add(StandardMaterial {
+            base_color: *c,
+            unlit: true,
+            perceptual_roughness: 0.9,
+            ..default()
+        });
+        let mesh = meshes.add(Cuboid::new(0.06, 0.001, 0.06));
+        let lx = -0.06 + (i as f32) * 0.07;
+        commands.spawn((
+            BuiltByOffice,
+            occluder.clone(),
+            Mesh3d(mesh),
+            MeshMaterial3d(mat),
+            Transform {
+                translation: top_pos(Vec3::new(lx, 0.001, -0.04)),
+                rotation: yaw_q * Quat::from_axis_angle(Vec3::Y, 0.15 * (i as f32 - 1.0)),
+                scale: Vec3::ONE,
+            },
+        ));
+    }
+
+    // --- Pen holder + pens ---
+    let holder_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.30, 0.30, 0.35),
+        base_color_texture: Some(tex.metal.clone()),
+        metallic: 0.4,
+        perceptual_roughness: 0.45,
+        ..default()
+    });
+    let holder_mesh = meshes.add(Cylinder::new(0.05, 0.10));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(holder_mesh),
+        MeshMaterial3d(holder_mat),
+        Transform::from_translation(top_pos(Vec3::new(-0.45, 0.05, -0.10))),
+    ));
+    let pen_colors = [
+        Color::srgb(0.10, 0.10, 0.10),
+        Color::srgb(0.20, 0.50, 0.85),
+        Color::srgb(0.90, 0.20, 0.25),
+    ];
+    for (i, c) in pen_colors.iter().enumerate() {
+        let mat = materials.add(StandardMaterial {
+            base_color: *c,
+            perceptual_roughness: 0.45,
+            ..default()
+        });
+        let mesh = meshes.add(Cylinder::new(0.005, 0.16));
+        let off_x = -0.45 + (i as f32 - 1.0) * 0.018;
+        let off_z = -0.10 + (i as f32 - 1.0) * 0.012;
+        commands.spawn((
+            BuiltByOffice,
+            occluder.clone(),
+            Mesh3d(mesh),
+            MeshMaterial3d(mat),
+            Transform {
+                translation: top_pos(Vec3::new(off_x, 0.14, off_z)),
+                rotation: yaw_q
+                    * Quat::from_axis_angle(Vec3::X, 0.12 * (i as f32 - 1.0)),
+                scale: Vec3::ONE,
+            },
+        ));
+    }
 }
 
 pub fn spawn_room_decor(

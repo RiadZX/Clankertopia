@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use super::character::spawn_character_and_plaque;
 use super::config::{DoorConfig, OfficeConfig, RoomConfig, Wall};
-use super::decor::{spawn_desk_decor, spawn_room_decor};
+use super::decor::{spawn_desk_accessories, spawn_room_decor};
 use super::editor::BuiltByOffice;
 use super::textures::ProcTextures;
 use crate::terminal::{spawn_terminal, MonitorScreen};
@@ -19,6 +19,14 @@ pub struct RoomEntity {
 pub struct DeskEntity {
     pub room_id: String,
     pub desk_id: String,
+}
+
+/// Marks meshes (chair, character, desk surface, decor, plaque) that belong
+/// to a particular desk and should be hidden while that desk is focused so
+/// they don't occlude the screen.
+#[derive(Component, Clone)]
+pub struct DeskOccluder {
+    pub desk_entity: Entity,
 }
 
 /// World-space AABB for one walkable area (a room or a door slab connecting
@@ -175,8 +183,11 @@ fn build_room(
 
     // Desks.
     for desk in &room.desks {
-        let monitor_pos =
-            origin + Vec3::from_array(desk.position) + Vec3::new(0.0, 1.2, 0.0);
+        // Floor-relative desk anchor.
+        let desk_floor =
+            origin + Vec3::from_array(desk.position) + Vec3::new(0.0, 0.0, 0.0);
+        // Monitor sits above the desk surface (0.75 m) with a small gap.
+        let monitor_pos = desk_floor + Vec3::new(0.0, 1.20, 0.0);
         let entity = spawn_terminal(
             commands,
             meshes,
@@ -200,43 +211,26 @@ fn build_room(
                 },
                 BuiltByOffice,
             ));
+
+        spawn_workstation(
+            commands,
+            meshes,
+            materials,
+            tex,
+            desk_floor,
+            desk.yaw,
+            entity,
+        );
+
         spawn_character_and_plaque(
             commands,
             meshes.as_mut(),
             materials.as_mut(),
-            monitor_pos,
+            desk_floor,
             desk.yaw,
             desk.name.as_deref(),
             desk.character.as_ref(),
-        );
-        // Optional desk surface (cheap rectangle slab) just below the monitor.
-        let yaw_q = Quat::from_axis_angle(Vec3::Y, desk.yaw);
-        let desk_mat = materials.add(StandardMaterial {
-            base_color: Color::WHITE,
-            base_color_texture: Some(tex.desk_wood.clone()),
-            perceptual_roughness: 0.7,
-            ..default()
-        });
-        let desk_mesh = meshes.add(Cuboid::new(1.6, 0.05, 0.7));
-        let surface_pos = origin + Vec3::from_array(desk.position) + Vec3::new(0.0, 0.75, 0.0);
-        commands.spawn((
-            BuiltByOffice,
-            Mesh3d(desk_mesh),
-            MeshMaterial3d(desk_mat),
-            Transform {
-                translation: surface_pos,
-                rotation: yaw_q,
-                scale: Vec3::ONE,
-            },
-        ));
-
-        spawn_desk_decor(
-            commands,
-            meshes.as_mut(),
-            materials.as_mut(),
-            tex,
-            monitor_pos,
-            desk.yaw,
+            entity,
         );
     }
 
@@ -541,4 +535,218 @@ fn door_slab(cfg: &OfficeConfig, room: &RoomConfig, door: &DoorConfig) -> Option
         min: centre_world - Vec3::new(hx, 0.0, hz),
         max: centre_world + Vec3::new(hx, door.height, hz),
     })
+}
+
+/// Builds a desk + chair + accessories for one workstation. Everything spawned
+/// here is tagged with `DeskOccluder { desk_entity }` so it hides when the
+/// player focuses that desk's terminal.
+fn spawn_workstation(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    tex: &ProcTextures,
+    desk_floor: Vec3,
+    yaw: f32,
+    desk_entity: Entity,
+) {
+    let occluder = DeskOccluder { desk_entity };
+    let yaw_q = Quat::from_axis_angle(Vec3::Y, yaw);
+
+    // ---- Desk ------------------------------------------------------------
+    let desk_top_y = 0.75_f32;
+    let desk_w = 1.6_f32;
+    let desk_d = 0.75_f32;
+    let desk_top_t = 0.05_f32;
+
+    let wood_mat = materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        base_color_texture: Some(tex.desk_wood.clone()),
+        perceptual_roughness: 0.7,
+        ..default()
+    });
+    let dark_wood_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.65, 0.5, 0.4),
+        base_color_texture: Some(tex.desk_wood.clone()),
+        perceptual_roughness: 0.75,
+        ..default()
+    });
+    let metal_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.55, 0.55, 0.6),
+        base_color_texture: Some(tex.metal.clone()),
+        metallic: 0.7,
+        perceptual_roughness: 0.3,
+        ..default()
+    });
+
+    // Desk top.
+    let top_mesh = meshes.add(Cuboid::new(desk_w, desk_top_t, desk_d));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(top_mesh),
+        MeshMaterial3d(wood_mat.clone()),
+        Transform {
+            translation: desk_floor + Vec3::new(0.0, desk_top_y, 0.0),
+            rotation: yaw_q,
+            scale: Vec3::ONE,
+        },
+    ));
+
+    // Four legs (metal cuboids).
+    let leg_t = 0.05_f32;
+    let leg_h = desk_top_y - desk_top_t * 0.5;
+    let leg_inset = 0.06_f32;
+    let leg_xs = [
+        -desk_w * 0.5 + leg_inset + leg_t * 0.5,
+        desk_w * 0.5 - leg_inset - leg_t * 0.5,
+    ];
+    let leg_zs = [
+        -desk_d * 0.5 + leg_inset + leg_t * 0.5,
+        desk_d * 0.5 - leg_inset - leg_t * 0.5,
+    ];
+    for lx in leg_xs {
+        for lz in leg_zs {
+            let leg_mesh = meshes.add(Cuboid::new(leg_t, leg_h, leg_t));
+            let local = Vec3::new(lx, leg_h * 0.5, lz);
+            commands.spawn((
+                BuiltByOffice,
+                occluder.clone(),
+                Mesh3d(leg_mesh),
+                MeshMaterial3d(metal_mat.clone()),
+                Transform {
+                    translation: desk_floor + yaw_q * local,
+                    rotation: yaw_q,
+                    scale: Vec3::ONE,
+                },
+            ));
+        }
+    }
+
+    // Modesty panel along the back of the desk.
+    let panel_mesh = meshes.add(Cuboid::new(desk_w - 0.2, 0.35, 0.02));
+    let panel_local = Vec3::new(0.0, desk_top_y - 0.05 - 0.175, desk_d * 0.5 - 0.04);
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(panel_mesh),
+        MeshMaterial3d(dark_wood_mat.clone()),
+        Transform {
+            translation: desk_floor + yaw_q * panel_local,
+            rotation: yaw_q,
+            scale: Vec3::ONE,
+        },
+    ));
+
+    // ---- Office chair ----------------------------------------------------
+    let chair_offset = yaw_q * Vec3::new(0.0, 0.0, 1.05);
+    let chair_base = desk_floor + chair_offset;
+
+    let seat_mat = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.18, 0.18, 0.22),
+        perceptual_roughness: 0.7,
+        ..default()
+    });
+
+    // Caster base: 5 spokes radiating out.
+    let pillar_top_y = 0.45_f32;
+    let spokes = 5;
+    let spoke_len = 0.30_f32;
+    let spoke_mesh = meshes.add(Cuboid::new(spoke_len, 0.04, 0.06));
+    for i in 0..spokes {
+        let a = (i as f32 / spokes as f32) * std::f32::consts::TAU;
+        let rot = Quat::from_axis_angle(Vec3::Y, a);
+        let local = Vec3::new(spoke_len * 0.5, 0.04, 0.0);
+        commands.spawn((
+            BuiltByOffice,
+            occluder.clone(),
+            Mesh3d(spoke_mesh.clone()),
+            MeshMaterial3d(metal_mat.clone()),
+            Transform {
+                translation: chair_base + rot * local,
+                rotation: yaw_q * rot,
+                scale: Vec3::ONE,
+            },
+        ));
+        // Caster wheel at the end of each spoke.
+        let caster_mesh = meshes.add(Sphere::new(0.04));
+        commands.spawn((
+            BuiltByOffice,
+            occluder.clone(),
+            Mesh3d(caster_mesh),
+            MeshMaterial3d(dark_wood_mat.clone()),
+            Transform::from_translation(
+                chair_base + rot * Vec3::new(spoke_len, 0.04, 0.0),
+            ),
+        ));
+    }
+
+    // Central pillar.
+    let pillar_mesh = meshes.add(Cylinder::new(0.04, pillar_top_y));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(pillar_mesh),
+        MeshMaterial3d(metal_mat.clone()),
+        Transform::from_translation(chair_base + Vec3::Y * (pillar_top_y * 0.5)),
+    ));
+
+    // Seat (top of seat at desk_top_y - 0.30 = 0.45).
+    let seat_top_y = pillar_top_y;
+    let seat_mesh = meshes.add(Cuboid::new(0.5, 0.10, 0.5));
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(seat_mesh),
+        MeshMaterial3d(seat_mat.clone()),
+        Transform {
+            translation: chair_base + Vec3::Y * (seat_top_y + 0.05),
+            rotation: yaw_q,
+            scale: Vec3::ONE,
+        },
+    ));
+
+    // Backrest.
+    let back_h = 0.55_f32;
+    let back_mesh = meshes.add(Cuboid::new(0.5, back_h, 0.06));
+    let back_local = Vec3::new(0.0, seat_top_y + 0.10 + back_h * 0.5, 0.22);
+    commands.spawn((
+        BuiltByOffice,
+        occluder.clone(),
+        Mesh3d(back_mesh),
+        MeshMaterial3d(seat_mat.clone()),
+        Transform {
+            translation: chair_base + yaw_q * back_local,
+            rotation: yaw_q,
+            scale: Vec3::ONE,
+        },
+    ));
+
+    // Armrests.
+    for sx in [-1.0_f32, 1.0] {
+        let arm_mesh = meshes.add(Cuboid::new(0.06, 0.05, 0.3));
+        let arm_local = Vec3::new(sx * 0.28, seat_top_y + 0.20, 0.05);
+        commands.spawn((
+            BuiltByOffice,
+            occluder.clone(),
+            Mesh3d(arm_mesh),
+            MeshMaterial3d(seat_mat.clone()),
+            Transform {
+                translation: chair_base + yaw_q * arm_local,
+                rotation: yaw_q,
+                scale: Vec3::ONE,
+            },
+        ));
+    }
+
+    // ---- Accessories on the desk ----------------------------------------
+    spawn_desk_accessories(
+        commands,
+        meshes.as_mut(),
+        materials.as_mut(),
+        tex,
+        desk_floor,
+        yaw,
+        desk_top_y,
+        occluder,
+    );
 }
