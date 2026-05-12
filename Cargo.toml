@@ -1,0 +1,36 @@
+[package]
+name = "clankertopia"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { version = "0.18", default-features = false, features = [
+    "3d_bevy_render",
+    "default_app",
+    "std",
+    "async_executor",
+    "multi_threaded",
+    "bevy_winit",
+    "default_font",
+    "x11",
+    "wayland",
+    "tonemapping_luts",
+    "smaa_luts",
+    "keyboard",
+    "mouse",
+    "bevy_ui",
+    "bevy_ui_render",
+    "bevy_text",
+] }
+portable-pty = "0.9"
+vt100 = "0.16"
+soft_ratatui = { version = "0.2", default-features = false, features = ["cosmic-text"] }
+ratatui = { version = "0.30", default-features = false, features = ["std"] }
+crossbeam-channel = "0.5"
+anyhow = "1"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
