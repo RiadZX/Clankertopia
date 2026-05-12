@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use std::path::PathBuf;
 
 pub mod builder;
+pub mod character;
 pub mod config;
 pub mod loader;
 

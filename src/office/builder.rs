@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use super::character::spawn_character_and_plaque;
 use super::config::{DoorConfig, OfficeConfig, RoomConfig, Wall};
 use crate::terminal::{spawn_terminal, MonitorScreen};
 
@@ -183,6 +184,15 @@ fn build_room(
             room_id: room.id.clone(),
             desk_id: desk.id.clone(),
         });
+        spawn_character_and_plaque(
+            commands,
+            meshes.as_mut(),
+            materials.as_mut(),
+            monitor_pos,
+            desk.yaw,
+            desk.name.as_deref(),
+            desk.character.as_ref(),
+        );
         // Optional desk surface (cheap rectangle slab) just below the monitor.
         let yaw_q = Quat::from_axis_angle(Vec3::Y, desk.yaw);
         let desk_mat = materials.add(StandardMaterial {
