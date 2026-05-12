@@ -4,10 +4,12 @@ use std::path::PathBuf;
 pub mod builder;
 pub mod character;
 pub mod config;
+pub mod editor;
 pub mod loader;
 
 pub use builder::*;
 pub use config::*;
+pub use editor::{PendingSave, RebuildOffice, ReloadOffice};
 pub use loader::*;
 
 pub struct OfficePlugin;
@@ -27,7 +29,20 @@ impl Plugin for OfficePlugin {
         app.insert_resource(OfficeConfigRes(cfg))
             .insert_resource(OfficeConfigPath(path))
             .init_resource::<WalkVolumes>()
-            .add_systems(Startup, spawn_office);
+            .init_resource::<editor::PendingSave>()
+            .add_message::<editor::ReloadOffice>()
+            .add_message::<editor::RebuildOffice>()
+            .add_systems(Startup, spawn_office)
+            .add_systems(
+                Update,
+                (
+                    editor::editor_keymap,
+                    editor::handle_reload,
+                    editor::handle_rebuild,
+                    editor::debounced_save,
+                )
+                    .chain(),
+            );
     }
 }
 

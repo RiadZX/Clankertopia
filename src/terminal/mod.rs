@@ -89,10 +89,6 @@ pub fn spawn_terminal(
     });
 
     let mesh = meshes.add(Rectangle::new(monitor.size.x, monitor.size.y));
-    let bezel_mesh = meshes.add(Rectangle::new(
-        monitor.size.x + 0.12,
-        monitor.size.y + 0.12,
-    ));
 
     let session = pty::spawn_session(monitor.cols, monitor.rows, monitor.startup.as_ref())
         .expect("failed to spawn PTY session");
@@ -106,25 +102,25 @@ pub fn spawn_terminal(
     let parser = vt100::Parser::new(monitor.rows, monitor.cols, 0);
 
     let rotation = Quat::from_axis_angle(Vec3::Y, monitor.yaw);
-    let back_offset = rotation * Vec3::new(0.0, 0.0, -0.005);
     let transform = Transform {
         translation: monitor.position,
         rotation,
         scale: Vec3::ONE,
     };
-    let bezel_transform = Transform {
-        translation: monitor.position + back_offset,
-        rotation,
-        scale: Vec3::ONE,
-    };
 
-    commands.spawn((
-        Mesh3d(bezel_mesh),
-        MeshMaterial3d(bezel_material),
-        bezel_transform,
+    let bezel_mesh = meshes.add(Rectangle::new(
+        monitor.size.x + 0.12,
+        monitor.size.y + 0.12,
     ));
+    let bezel = commands
+        .spawn((
+            Mesh3d(bezel_mesh),
+            MeshMaterial3d(bezel_material),
+            Transform::from_xyz(0.0, 0.0, -0.005),
+        ))
+        .id();
 
-    commands
+    let entity = commands
         .spawn((
             Terminal,
             TerminalSize {
@@ -142,5 +138,7 @@ pub fn spawn_terminal(
             MeshMaterial3d(material),
             transform,
         ))
-        .id()
+        .id();
+    commands.entity(entity).add_child(bezel);
+    entity
 }

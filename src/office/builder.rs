@@ -2,6 +2,7 @@ use bevy::prelude::*;
 
 use super::character::spawn_character_and_plaque;
 use super::config::{DoorConfig, OfficeConfig, RoomConfig, Wall};
+use super::editor::BuiltByOffice;
 use crate::terminal::{spawn_terminal, MonitorScreen};
 
 #[derive(Component)]
@@ -36,7 +37,14 @@ pub fn build_office(
     images: &mut ResMut<Assets<Image>>,
     cfg: &OfficeConfig,
 ) -> WalkVolumes {
-    let world = commands.spawn((OfficeWorld, Transform::default(), Visibility::Visible)).id();
+    let world = commands
+        .spawn((
+            OfficeWorld,
+            BuiltByOffice,
+            Transform::default(),
+            Visibility::Visible,
+        ))
+        .id();
     let mut walks: Vec<WalkBox> = Vec::new();
 
     for room in &cfg.rooms {
@@ -52,8 +60,8 @@ pub fn build_office(
         }
     }
 
-    // Always-on ambient lighting.
     commands.spawn((
+        BuiltByOffice,
         DirectionalLight {
             illuminance: 3500.0,
             shadows_enabled: false,
@@ -108,6 +116,7 @@ fn build_room(
     let room_entity = commands
         .spawn((
             RoomEntity { id: room.id.clone() },
+            BuiltByOffice,
             Transform::from_translation(origin),
             Visibility::Visible,
         ))
@@ -117,6 +126,7 @@ fn build_room(
     let floor_mesh = meshes.add(Plane3d::default().mesh().size(w, d));
     let floor = commands
         .spawn((
+            BuiltByOffice,
             Mesh3d(floor_mesh.clone()),
             MeshMaterial3d(floor_mat),
             Transform::from_xyz(0.0, 0.0, 0.0),
@@ -126,6 +136,7 @@ fn build_room(
 
     let ceiling = commands
         .spawn((
+            BuiltByOffice,
             Mesh3d(floor_mesh),
             MeshMaterial3d(ceiling_mat),
             Transform::from_xyz(0.0, h, 0.0)
@@ -150,6 +161,7 @@ fn build_room(
     // Ceiling lamp.
     let lamp = commands
         .spawn((
+            BuiltByOffice,
             PointLight {
                 intensity: 220_000.0,
                 radius: 0.5,
@@ -180,10 +192,15 @@ fn build_room(
                 startup: desk.startup.clone(),
             },
         );
-        commands.entity(entity).insert(DeskEntity {
-            room_id: room.id.clone(),
-            desk_id: desk.id.clone(),
-        });
+        commands
+            .entity(entity)
+            .insert((
+                DeskEntity {
+                    room_id: room.id.clone(),
+                    desk_id: desk.id.clone(),
+                },
+                BuiltByOffice,
+            ));
         spawn_character_and_plaque(
             commands,
             meshes.as_mut(),
@@ -203,6 +220,7 @@ fn build_room(
         let desk_mesh = meshes.add(Cuboid::new(1.6, 0.05, 0.7));
         let surface_pos = origin + Vec3::from_array(desk.position) + Vec3::new(0.0, 0.75, 0.0);
         commands.spawn((
+            BuiltByOffice,
             Mesh3d(desk_mesh),
             MeshMaterial3d(desk_mat),
             Transform {
@@ -281,6 +299,7 @@ fn build_walls_with_doors(
             let face = Quat::from_axis_angle(Vec3::Y, yaw);
             let segment = commands
                 .spawn((
+                    BuiltByOffice,
                     Mesh3d(mesh),
                     MeshMaterial3d(wall_mat.clone()),
                     Transform {
@@ -309,6 +328,7 @@ fn build_walls_with_doors(
             let face = Quat::from_axis_angle(Vec3::Y, yaw);
             let lintel = commands
                 .spawn((
+                    BuiltByOffice,
                     Mesh3d(mesh),
                     MeshMaterial3d(wall_mat.clone()),
                     Transform {

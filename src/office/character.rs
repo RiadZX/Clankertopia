@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use super::config::{CharacterConfig, CharacterShape};
+use super::editor::BuiltByOffice;
 
 pub fn spawn_character_and_plaque(
     commands: &mut Commands,
@@ -58,6 +59,7 @@ fn spawn_character(
     let head_pos = body_pos + Vec3::new(0.0, 0.55, 0.0);
 
     commands.spawn((
+        BuiltByOffice,
         Mesh3d(body_mesh),
         MeshMaterial3d(body_mat),
         Transform {
@@ -67,6 +69,7 @@ fn spawn_character(
         },
     ));
     commands.spawn((
+        BuiltByOffice,
         Mesh3d(head_mesh),
         MeshMaterial3d(head_mat),
         Transform::from_translation(head_pos),
@@ -94,6 +97,7 @@ fn spawn_plaque(
     let plaque_mesh = meshes.add(Cuboid::new(plaque_w, plaque_h, 0.02));
     let plaque_pos = desk_world_pos + Vec3::new(0.0, 0.65, 0.0);
     commands.spawn((
+        BuiltByOffice,
         Mesh3d(plaque_mesh),
         MeshMaterial3d(plaque_mat),
         Transform {
@@ -105,6 +109,7 @@ fn spawn_plaque(
 
     let face_offset = yaw_q * Vec3::new(0.0, 0.0, 0.012);
     commands.spawn((
+        BuiltByOffice,
         Text2d::new(name.to_string()),
         TextFont {
             font_size: 28.0,
