@@ -27,7 +27,7 @@ fn focus_system(
     mut state: ResMut<GameState>,
     mut snapshot: ResMut<FocusCameraSnapshot>,
     camera: Query<(&Transform, &Projection), With<Player>>,
-    monitors: Query<(Entity, &MonitorQuad)>,
+    monitors: Query<(Entity, &MonitorQuad, &Transform), Without<Player>>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
     match *state {
@@ -40,17 +40,17 @@ fn focus_system(
             };
             let origin = cam_tf.translation;
 
-            let mut best: Option<(Entity, &MonitorQuad, f32)> = None;
-            for (entity, quad) in monitors.iter() {
+            let mut best: Option<(Entity, &MonitorQuad, &Transform, f32)> = None;
+            for (entity, quad, monitor_tf) in monitors.iter() {
                 let d = origin.distance(quad.position);
                 if d > MAX_FOCUS_DISTANCE {
                     continue;
                 }
-                if best.map(|(_, _, bd)| d < bd).unwrap_or(true) {
-                    best = Some((entity, quad, d));
+                if best.map(|(_, _, _, bd)| d < bd).unwrap_or(true) {
+                    best = Some((entity, quad, monitor_tf, d));
                 }
             }
-            let Some((entity, quad, _)) = best else {
+            let Some((entity, quad, monitor_tf, _)) = best else {
                 return;
             };
 
@@ -73,8 +73,14 @@ fn focus_system(
                 (quad.size.x * 0.5) / (tan_half * aspect.max(1e-3));
             let fit_dist = dist_for_height.max(dist_for_width) * 1.08;
 
+            // The monitor's local forward (Z) points outward from its screen
+            // face by convention (terminal quad is built facing -Z in local
+            // space then rotated by yaw). The camera must sit along that
+            // normal so it's orthogonal to the screen.
+            let normal = (monitor_tf.rotation * Vec3::Z).normalize_or(Vec3::Z);
+
             snapshot.saved = Some((cam_tf.translation, cam_tf.rotation));
-            let target_pos = quad.position + Vec3::Z * fit_dist;
+            let target_pos = quad.position + normal * fit_dist;
             let target_rot = Transform::from_translation(target_pos)
                 .looking_at(quad.position, Vec3::Y)
                 .rotation;
