@@ -99,7 +99,7 @@ pub fn spawn_terminal(
         }
     }
 
-    let parser = vt100::Parser::new(monitor.rows, monitor.cols, 0);
+    let parser = vt100::Parser::new(monitor.rows, monitor.cols, 10_000);
 
     let rotation = Quat::from_axis_angle(Vec3::Y, monitor.yaw);
     let transform = Transform {

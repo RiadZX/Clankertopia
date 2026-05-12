@@ -43,7 +43,7 @@ fn update_hud(state: Res<GameState>, mut q: Query<&mut Text, With<HudText>>) {
             "[WASD] move  [mouse] look  [E] focus  [N] add desk  [Del] remove  [R] add room  [Shift+S] save  [F5] reload"
         }
         GameState::Typing(_) => {
-            "[Esc] leave terminal   [Ctrl +/-] zoom   [Ctrl 0] reset zoom"
+            "[Esc] leave  [Ctrl +/-] zoom  [Ctrl 0] reset  [wheel / Shift+PgUp/PgDn] scroll"
         }
     };
     if text.0 != new {

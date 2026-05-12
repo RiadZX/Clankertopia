@@ -39,6 +39,11 @@ pub fn drain_pty_system(
             got = true;
         }
         if got {
+            // Snap to bottom on new PTY output so the user doesn't miss
+            // anything while scrolled up.
+            if screen.parser.screen().scrollback() != 0 {
+                screen.parser.screen_mut().set_scrollback(0);
+            }
             screen.dirty = true;
         }
         if renderer.is_none() {

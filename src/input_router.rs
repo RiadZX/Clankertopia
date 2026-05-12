@@ -1,5 +1,6 @@
 use bevy::ecs::message::MessageReader;
 use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::mouse::{MouseWheel, MouseScrollUnit};
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 
@@ -11,7 +12,7 @@ pub struct InputRouterPlugin;
 
 impl Plugin for InputRouterPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, input_router_system);
+        app.add_systems(Update, (input_router_system, scroll_system));
     }
 }
 
@@ -91,6 +92,13 @@ pub fn input_router_system(
 
         if let Some(bytes) = encode_key(ev, modifiers.ctrl, modifiers.alt) {
             let _ = pty.0.input_tx.send(bytes);
+            // Typing always returns the view to the live bottom line.
+            if let Ok((_, mut screen)) = renderers.get_mut(focused_entity) {
+                if screen.parser.screen().scrollback() != 0 {
+                    screen.parser.screen_mut().set_scrollback(0);
+                    screen.dirty = true;
+                }
+            }
         }
     }
 }
@@ -208,4 +216,108 @@ fn ctrl_byte(key: KeyCode) -> Option<u8> {
         KeyCode::BracketRight => Some(0x1d),
         _ => None,
     }
+}
+
+/// One line per "notch" of a discrete wheel event; pixel devices (touchpads)
+/// accumulate by this many pixels before scrolling a line.
+const PIXELS_PER_LINE: f32 = 28.0;
+const PAGE_FRACTION: f32 = 0.9;
+
+#[derive(Default)]
+pub struct ScrollAccumulator {
+    px: f32,
+}
+
+pub fn scroll_system(
+    mut wheel: MessageReader<MouseWheel>,
+    mut keys: MessageReader<KeyboardInput>,
+    button_keys: Res<ButtonInput<KeyCode>>,
+    state: Res<GameState>,
+    mut acc: Local<ScrollAccumulator>,
+    ptys: Query<&PtyHandle>,
+    mut screens: Query<(&mut TerminalScreen, &crate::terminal::TerminalSize)>,
+) {
+    let Some(focused) = state.focused_entity() else {
+        acc.px = 0.0;
+        // Still drain so events don't pile up.
+        wheel.read().for_each(|_| {});
+        keys.read().for_each(|_| {});
+        return;
+    };
+
+    let mut lines_delta: i32 = 0;
+
+    // Mouse wheel.
+    for ev in wheel.read() {
+        let delta = match ev.unit {
+            MouseScrollUnit::Line => ev.y,
+            MouseScrollUnit::Pixel => {
+                acc.px += ev.y;
+                let lines = (acc.px / PIXELS_PER_LINE).trunc();
+                acc.px -= lines * PIXELS_PER_LINE;
+                lines
+            }
+        };
+        // Positive y = scroll up = show older lines.
+        lines_delta += (delta * 3.0).round() as i32;
+    }
+
+    // Shift + PgUp / PgDn / Home / End for scrollback navigation by keyboard.
+    let shift = button_keys.pressed(KeyCode::ShiftLeft)
+        || button_keys.pressed(KeyCode::ShiftRight);
+
+    let Ok((mut screen, size)) = screens.get_mut(focused) else {
+        keys.read().for_each(|_| {});
+        return;
+    };
+    let page = ((size.rows as f32) * PAGE_FRACTION).max(1.0) as i32;
+
+    for ev in keys.read() {
+        if ev.state != ButtonState::Pressed {
+            continue;
+        }
+        if !shift {
+            continue;
+        }
+        match ev.key_code {
+            KeyCode::PageUp => lines_delta += page,
+            KeyCode::PageDown => lines_delta -= page,
+            KeyCode::Home => lines_delta += i32::MAX / 4,
+            KeyCode::End => lines_delta = i32::MIN / 4,
+            _ => {}
+        }
+    }
+
+    if lines_delta == 0 {
+        return;
+    }
+
+    let vt_screen = screen.parser.screen();
+    if vt_screen.alternate_screen() {
+        // Alt screen has no scrollback; emulate wheel as up/down arrow keys
+        // (xterm-compatible behaviour for apps like less / vim / man).
+        let Ok(pty) = ptys.get(focused) else {
+            return;
+        };
+        let (seq, count) = if lines_delta > 0 {
+            (b"\x1b[A".as_slice(), lines_delta)
+        } else {
+            (b"\x1b[B".as_slice(), -lines_delta)
+        };
+        let mut bytes = Vec::with_capacity(seq.len() * count.min(64) as usize);
+        for _ in 0..count.min(64) {
+            bytes.extend_from_slice(seq);
+        }
+        let _ = pty.0.input_tx.send(bytes);
+        return;
+    }
+
+    // Normal screen: drive vt100's internal scrollback offset.
+    let current = vt_screen.scrollback() as i32;
+    let new = (current + lines_delta).max(0);
+    screen
+        .parser
+        .screen_mut()
+        .set_scrollback(new as usize);
+    screen.dirty = true;
 }
