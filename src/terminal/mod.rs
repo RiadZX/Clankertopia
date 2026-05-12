@@ -34,9 +34,11 @@ pub struct TerminalResize {
 
 pub struct MonitorScreen {
     pub position: Vec3,
+    pub yaw: f32,
     pub size: Vec2,
     pub cols: u16,
     pub rows: u16,
+    pub startup: Option<crate::office::config::StartupCommand>,
 }
 
 /// Embedded Nerd Font (TTF) shipped with the binary; provides Powerline, Devicons,
@@ -92,14 +94,29 @@ pub fn spawn_terminal(
         monitor.size.y + 0.12,
     ));
 
-    let session = pty::spawn_session(monitor.cols, monitor.rows)
+    let session = pty::spawn_session(monitor.cols, monitor.rows, monitor.startup.as_ref())
         .expect("failed to spawn PTY session");
+
+    if let Some(start) = &monitor.startup {
+        for line in &start.send {
+            let _ = session.input_tx.send(line.clone().into_bytes());
+        }
+    }
 
     let parser = vt100::Parser::new(monitor.rows, monitor.cols, 0);
 
-    let transform = Transform::from_translation(monitor.position);
-    let bezel_transform =
-        Transform::from_translation(monitor.position - Vec3::new(0.0, 0.0, 0.005));
+    let rotation = Quat::from_axis_angle(Vec3::Y, monitor.yaw);
+    let back_offset = rotation * Vec3::new(0.0, 0.0, -0.005);
+    let transform = Transform {
+        translation: monitor.position,
+        rotation,
+        scale: Vec3::ONE,
+    };
+    let bezel_transform = Transform {
+        translation: monitor.position + back_offset,
+        rotation,
+        scale: Vec3::ONE,
+    };
 
     commands.spawn((
         Mesh3d(bezel_mesh),

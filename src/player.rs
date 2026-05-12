@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow};
 
 use crate::game_state::GameState;
-use crate::world::{ROOM_HALF_X, ROOM_HALF_Z, ROOM_HEIGHT};
+use crate::office::{OfficeConfigRes, WalkVolumes};
 
 pub struct PlayerPlugin;
 
@@ -35,14 +35,22 @@ const MOVE_SPEED: f32 = 3.2;
 const MOUSE_SENS: f32 = 0.0022;
 const PLAYER_RADIUS: f32 = 0.3;
 
-fn spawn_player(mut commands: Commands) {
+fn spawn_player(mut commands: Commands, cfg: Res<OfficeConfigRes>) {
+    let spawn = &cfg.0.spawn;
+    let room_origin = cfg
+        .0
+        .room(&spawn.room)
+        .map(|r| Vec3::from_array(r.origin))
+        .unwrap_or(Vec3::ZERO);
+    let pos = room_origin + Vec3::from_array(spawn.position);
+    let forward = Quat::from_axis_angle(Vec3::Y, spawn.yaw) * Vec3::NEG_Z;
     commands.spawn((
-        Player::default(),
+        Player {
+            yaw: spawn.yaw,
+            pitch: 0.0,
+        },
         Camera3d::default(),
-        Transform::from_xyz(0.0, EYE_HEIGHT, 1.0).looking_at(
-            Vec3::new(0.0, EYE_HEIGHT, -1.0),
-            Vec3::Y,
-        ),
+        Transform::from_translation(pos).looking_at(pos + forward, Vec3::Y),
     ));
 }
 
@@ -116,6 +124,7 @@ fn mouse_look(
 fn keyboard_move(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
+    walks: Res<WalkVolumes>,
     mut players: Query<(&Player, &mut Transform)>,
 ) {
     let Ok((player, mut tf)) = players.single_mut() else {
@@ -137,15 +146,31 @@ fn keyboard_move(
         wish -= right;
     }
     wish.y = 0.0;
-    if wish.length_squared() > 0.0 {
-        wish = wish.normalize() * MOVE_SPEED * time.delta_secs();
-        let new_pos = tf.translation + wish;
-        tf.translation.x = new_pos
-            .x
-            .clamp(-ROOM_HALF_X + PLAYER_RADIUS, ROOM_HALF_X - PLAYER_RADIUS);
-        tf.translation.z = new_pos
-            .z
-            .clamp(-ROOM_HALF_Z + PLAYER_RADIUS, ROOM_HALF_Z - PLAYER_RADIUS);
-        tf.translation.y = EYE_HEIGHT.min(ROOM_HEIGHT - 0.1);
+    if wish.length_squared() <= 0.0 {
+        return;
     }
+    wish = wish.normalize() * MOVE_SPEED * time.delta_secs();
+    let current = tf.translation;
+    // Move axis-independently so we slide along walls.
+    let mut next = current;
+    let try_x = Vec3::new(current.x + wish.x, current.y, current.z);
+    if in_any_walk(&walks.0, try_x) {
+        next.x = try_x.x;
+    }
+    let try_z = Vec3::new(next.x, current.y, current.z + wish.z);
+    if in_any_walk(&walks.0, try_z) {
+        next.z = try_z.z;
+    }
+    next.y = EYE_HEIGHT;
+    tf.translation = next;
+}
+
+fn in_any_walk(walks: &[crate::office::WalkBox], p: Vec3) -> bool {
+    let r = PLAYER_RADIUS;
+    walks.iter().any(|w| {
+        p.x >= w.min.x + r
+            && p.x <= w.max.x - r
+            && p.z >= w.min.z + r
+            && p.z <= w.max.z - r
+    })
 }

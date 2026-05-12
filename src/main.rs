@@ -7,7 +7,6 @@ mod input_router;
 mod office;
 mod player;
 mod terminal;
-mod world;
 
 fn main() {
     App::new()
@@ -22,7 +21,7 @@ fn main() {
         .init_resource::<game_state::GameState>()
         .add_message::<terminal::TerminalResize>()
         .add_plugins((
-            world::WorldPlugin,
+            office::OfficePlugin,
             player::PlayerPlugin,
             terminal::TerminalPlugin,
             focus::FocusPlugin,

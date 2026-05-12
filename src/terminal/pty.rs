@@ -12,7 +12,11 @@ pub struct PtySession {
     _child: Box<dyn portable_pty::Child + Send + Sync>,
 }
 
-pub fn spawn_session(cols: u16, rows: u16) -> Result<PtySession> {
+pub fn spawn_session(
+    cols: u16,
+    rows: u16,
+    startup: Option<&crate::office::config::StartupCommand>,
+) -> Result<PtySession> {
     let pty_system = NativePtySystem::default();
     let pair = pty_system.openpty(PtySize {
         rows,
@@ -21,13 +25,31 @@ pub fn spawn_session(cols: u16, rows: u16) -> Result<PtySession> {
         pixel_height: 0,
     })?;
 
+    let configured_shell = startup
+        .and_then(|s| s.shell.clone())
+        .filter(|s| !s.is_empty());
+    let extra_args: Vec<String> = startup
+        .map(|s| s.args.clone())
+        .unwrap_or_default();
+
     let mut cmd = if cfg!(windows) {
-        CommandBuilder::new("cmd.exe")
+        let mut c = CommandBuilder::new(configured_shell.as_deref().unwrap_or("cmd.exe"));
+        for a in &extra_args {
+            c.arg(a);
+        }
+        c
     } else {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+        let shell = configured_shell.unwrap_or_else(|| {
+            std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string())
+        });
         let mut c = CommandBuilder::new(&shell);
-        if shell.ends_with("bash") || shell.ends_with("zsh") || shell.ends_with("sh") {
+        if extra_args.is_empty()
+            && (shell.ends_with("bash") || shell.ends_with("zsh") || shell.ends_with("sh"))
+        {
             c.arg("-i");
+        }
+        for a in &extra_args {
+            c.arg(a);
         }
         c
     };
@@ -38,8 +60,17 @@ pub fn spawn_session(cols: u16, rows: u16) -> Result<PtySession> {
             cmd.env(var, v);
         }
     }
-    if let Ok(home) = std::env::var("HOME") {
-        cmd.cwd(home);
+    if let Some(s) = startup {
+        for (k, v) in &s.env {
+            cmd.env(k, v);
+        }
+    }
+    let cwd = startup
+        .and_then(|s| s.cwd.clone())
+        .filter(|s| !s.is_empty())
+        .or_else(|| std::env::var("HOME").ok());
+    if let Some(c) = cwd {
+        cmd.cwd(c);
     }
 
     let child = pair.slave.spawn_command(cmd)?;
