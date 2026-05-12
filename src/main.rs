@@ -4,6 +4,7 @@ mod focus;
 mod game_state;
 mod hud;
 mod input_router;
+mod office;
 mod player;
 mod terminal;
 mod world;
