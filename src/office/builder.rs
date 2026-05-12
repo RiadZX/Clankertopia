@@ -2,7 +2,9 @@ use bevy::prelude::*;
 
 use super::character::spawn_character_and_plaque;
 use super::config::{DoorConfig, OfficeConfig, RoomConfig, Wall};
+use super::decor::{spawn_desk_decor, spawn_room_decor};
 use super::editor::BuiltByOffice;
+use super::textures::ProcTextures;
 use crate::terminal::{spawn_terminal, MonitorScreen};
 
 #[derive(Component)]
@@ -36,6 +38,7 @@ pub fn build_office(
     materials: &mut ResMut<Assets<StandardMaterial>>,
     images: &mut ResMut<Assets<Image>>,
     cfg: &OfficeConfig,
+    tex: &ProcTextures,
 ) -> WalkVolumes {
     let world = commands
         .spawn((
@@ -48,7 +51,7 @@ pub fn build_office(
     let mut walks: Vec<WalkBox> = Vec::new();
 
     for room in &cfg.rooms {
-        build_room(commands, meshes, materials, images, world, room, &mut walks);
+        build_room(commands, meshes, materials, images, world, room, &mut walks, tex);
     }
 
     // Add door slabs that bridge adjacent rooms so the player can walk through.
@@ -81,6 +84,7 @@ fn build_room(
     parent: Entity,
     room: &RoomConfig,
     walks: &mut Vec<WalkBox>,
+    tex: &ProcTextures,
 ) {
     let origin = Vec3::from_array(room.origin);
     let [w, h, d] = room.size;
@@ -91,16 +95,18 @@ fn build_room(
             room.theme.wall_color[1],
             room.theme.wall_color[2],
         ),
+        base_color_texture: Some(tex.plaster.clone()),
         perceptual_roughness: 0.9,
         ..default()
     });
     let floor_mat = materials.add(StandardMaterial {
         base_color: Color::srgb(
-            room.theme.floor_color[0],
-            room.theme.floor_color[1],
-            room.theme.floor_color[2],
+            room.theme.floor_color[0] * 1.8,
+            room.theme.floor_color[1] * 1.8,
+            room.theme.floor_color[2] * 1.8,
         ),
-        perceptual_roughness: 0.95,
+        base_color_texture: Some(tex.wood_floor.clone()),
+        perceptual_roughness: 0.85,
         ..default()
     });
     let ceiling_mat = materials.add(StandardMaterial {
@@ -109,6 +115,7 @@ fn build_room(
             room.theme.ceiling_color[1],
             room.theme.ceiling_color[2],
         ),
+        base_color_texture: Some(tex.ceiling_tile.clone()),
         perceptual_roughness: 0.95,
         ..default()
     });
@@ -213,8 +220,9 @@ fn build_room(
         // Optional desk surface (cheap rectangle slab) just below the monitor.
         let yaw_q = Quat::from_axis_angle(Vec3::Y, desk.yaw);
         let desk_mat = materials.add(StandardMaterial {
-            base_color: Color::srgb(0.35, 0.22, 0.15),
-            perceptual_roughness: 0.85,
+            base_color: Color::WHITE,
+            base_color_texture: Some(tex.desk_wood.clone()),
+            perceptual_roughness: 0.7,
             ..default()
         });
         let desk_mesh = meshes.add(Cuboid::new(1.6, 0.05, 0.7));
@@ -229,7 +237,25 @@ fn build_room(
                 scale: Vec3::ONE,
             },
         ));
+
+        spawn_desk_decor(
+            commands,
+            meshes.as_mut(),
+            materials.as_mut(),
+            tex,
+            monitor_pos,
+            desk.yaw,
+        );
     }
+
+    spawn_room_decor(
+        commands,
+        meshes.as_mut(),
+        materials.as_mut(),
+        tex,
+        origin,
+        room.size,
+    );
 
     // Walkable box for this room (in world space, slightly inset from the
     // walls so the player camera doesn't clip them).
@@ -370,7 +396,10 @@ fn door_slab(cfg: &OfficeConfig, room: &RoomConfig, door: &DoorConfig) -> Option
             door.width,
         ),
     };
-    let thickness = 1.5_f32;
+    // Slab must be thick enough to bridge the gap between both rooms'
+    // inset walk volumes (each room inset 0.3 m + player radius 0.3 m =
+    // ~0.6 m clear on each side of the wall). 3.0 m gives plenty of overlap.
+    let thickness = 3.0_f32;
     let half_w = axis_w * 0.5;
     let half_d = axis_d * 0.5;
     let (hx, hz) = match door.wall {

@@ -4,13 +4,16 @@ use std::path::PathBuf;
 pub mod builder;
 pub mod character;
 pub mod config;
+pub mod decor;
 pub mod editor;
 pub mod loader;
+pub mod textures;
 
 pub use builder::*;
 pub use config::*;
 pub use editor::{PendingSave, RebuildOffice, ReloadOffice};
 pub use loader::*;
+pub use textures::ProcTextures;
 
 pub struct OfficePlugin;
 
@@ -54,11 +57,14 @@ fn spawn_office(
     cfg: Res<OfficeConfigRes>,
     mut walks: ResMut<WalkVolumes>,
 ) {
+    let tex = textures::ProcTextures::generate(&mut images);
     *walks = builder::build_office(
         &mut commands,
         &mut meshes,
         &mut materials,
         &mut images,
         &cfg.0,
+        &tex,
     );
+    commands.insert_resource(tex);
 }

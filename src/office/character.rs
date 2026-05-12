@@ -52,11 +52,13 @@ fn spawn_character(
     };
     let head_mesh = meshes.add(Sphere::new(0.18));
 
-    // Sit "behind" the desk (the monitor faces the player; the clanker sits on
-    // the same side as the monitor, looking at the screen).
-    let sit_offset = yaw_q * Vec3::new(0.0, 0.55, 0.55);
-    let body_pos = desk_world_pos + sit_offset - Vec3::new(0.0, 0.45, 0.0);
-    let head_pos = body_pos + Vec3::new(0.0, 0.55, 0.0);
+    // The clanker sits on the FAR side of the desk (the back of the monitor).
+    // Local forward is +Z (away from where the player stands to look at the
+    // screen). Push them well behind the monitor and lower than the screen so
+    // they don't occlude it when you focus.
+    let sit_offset = yaw_q * Vec3::new(0.0, -0.55, 0.95);
+    let body_pos = desk_world_pos + sit_offset;
+    let head_pos = body_pos + yaw_q * Vec3::new(0.0, 0.55, -0.05);
 
     commands.spawn((
         BuiltByOffice,
@@ -95,7 +97,8 @@ fn spawn_plaque(
         ..default()
     });
     let plaque_mesh = meshes.add(Cuboid::new(plaque_w, plaque_h, 0.02));
-    let plaque_pos = desk_world_pos + Vec3::new(0.0, 0.65, 0.0);
+    // Above the monitor, slightly forward so the player sees it.
+    let plaque_pos = desk_world_pos + yaw_q * Vec3::new(0.0, 0.75, -0.02);
     commands.spawn((
         BuiltByOffice,
         Mesh3d(plaque_mesh),

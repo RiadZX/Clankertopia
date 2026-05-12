@@ -154,6 +154,7 @@ pub fn handle_rebuild(
     mut images: ResMut<Assets<Image>>,
     mut walks: ResMut<WalkVolumes>,
     cfg: Res<OfficeConfigRes>,
+    tex: Res<super::ProcTextures>,
     built: Query<Entity, With<BuiltByOffice>>,
 ) {
     if rebuild.read().count() == 0 {
@@ -168,6 +169,7 @@ pub fn handle_rebuild(
         &mut materials,
         &mut images,
         &cfg.0,
+        &tex,
     );
 }
 
