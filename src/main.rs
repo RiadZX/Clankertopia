@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+mod clanker_communication;
 mod focus;
 mod game_state;
 mod hud;
@@ -26,6 +27,7 @@ fn main() {
             terminal::TerminalPlugin,
             focus::FocusPlugin,
             input_router::InputRouterPlugin,
+            clanker_communication::ClankerCommunicationPlugin,
             hud::HudPlugin,
         ))
         .run();
