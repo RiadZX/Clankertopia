@@ -1,9 +1,13 @@
+use std::collections::HashMap;
+
 use bevy::ecs::message::MessageReader;
+use bevy::ecs::message::MessageWriter;
 use bevy::input::keyboard::{Key, KeyboardInput};
-use bevy::input::mouse::{MouseWheel, MouseScrollUnit};
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::input::ButtonState;
 use bevy::prelude::*;
 
+use crate::clanker_communication::PromptSubmitted;
 use crate::game_state::GameState;
 use crate::terminal::systems::TerminalRenderer;
 use crate::terminal::{PtyHandle, TerminalScreen};
@@ -31,9 +35,11 @@ const FONT_SIZE_DEFAULT: i32 = 16;
 pub fn input_router_system(
     mut key_events: MessageReader<KeyboardInput>,
     mut modifiers: Local<ModifierState>,
+    mut line_buffers: Local<HashMap<Entity, String>>,
     state: Res<GameState>,
     ptys: Query<&PtyHandle>,
     mut renderers: Query<(&mut TerminalRenderer, &mut TerminalScreen)>,
+    mut prompts: MessageWriter<PromptSubmitted>,
 ) {
     let focused = state.focused_entity();
 
@@ -89,6 +95,33 @@ pub fn input_router_system(
         let Ok(pty) = ptys.get(focused_entity) else {
             continue;
         };
+
+        let line = line_buffers.entry(focused_entity).or_default();
+        match ev.key_code {
+            KeyCode::Backspace => {
+                line.pop();
+            }
+            KeyCode::Enter | KeyCode::NumpadEnter => {
+                let prompt = line.trim();
+                if !prompt.is_empty() {
+                    prompts.write(PromptSubmitted {
+                        source: focused_entity,
+                        prompt: prompt.to_string(),
+                    });
+                }
+                line.clear();
+            }
+            _ => {
+                if !modifiers.ctrl && !modifiers.alt {
+                    if let Some(text) = ev.text.as_ref() {
+                        let filtered: String = text.chars().filter(|c| !c.is_control()).collect();
+                        if !filtered.is_empty() {
+                            line.push_str(&filtered);
+                        }
+                    }
+                }
+            }
+        }
 
         if let Some(bytes) = encode_key(ev, modifiers.ctrl, modifiers.alt) {
             let _ = pty.0.input_tx.send(bytes);
@@ -263,8 +296,7 @@ pub fn scroll_system(
     }
 
     // Shift + PgUp / PgDn / Home / End for scrollback navigation by keyboard.
-    let shift = button_keys.pressed(KeyCode::ShiftLeft)
-        || button_keys.pressed(KeyCode::ShiftRight);
+    let shift = button_keys.pressed(KeyCode::ShiftLeft) || button_keys.pressed(KeyCode::ShiftRight);
 
     let Ok((mut screen, size)) = screens.get_mut(focused) else {
         keys.read().for_each(|_| {});
@@ -315,9 +347,6 @@ pub fn scroll_system(
     // Normal screen: drive vt100's internal scrollback offset.
     let current = vt_screen.scrollback() as i32;
     let new = (current + lines_delta).max(0);
-    screen
-        .parser
-        .screen_mut()
-        .set_scrollback(new as usize);
+    screen.parser.screen_mut().set_scrollback(new as usize);
     screen.dirty = true;
 }
