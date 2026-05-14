@@ -350,17 +350,15 @@ fn run_discussion(prompt: &str, clankers: &[ClankerProfile]) -> DiscussionVerdic
     let mut leader_score = candidates.first().map(|(_, s)| *s).unwrap_or(0);
     let mut negotiated_boost = 0_i32;
     for (name, score) in candidates.iter().skip(1) {
-        let pressure = ((*score - leader_score) / 8).clamp(-3, 3);
+        let gap = (leader_score - *score).max(0);
+        let pressure = (3 - (gap / 10)).clamp(-1, 3);
         negotiated_boost += pressure;
         if specialty_matches_domain(infer_specialty(name), domain) {
             negotiated_boost += 1;
         }
     }
     leader_score += negotiated_boost;
-    if let Some((top_name, top_score)) = candidates.first_mut() {
-        *top_name = leader_name.clone();
-        *top_score = leader_score;
-    }
+    candidates[0].1 = leader_score;
     candidates.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     if let Some((winner, score)) = candidates.first() {
         leader_name = winner.clone();
